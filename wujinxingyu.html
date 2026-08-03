@@ -49,7 +49,8 @@ button{
     padding:6px 10px;
     border-radius:3px;
     cursor:pointer;
-    margin:2px
+    margin:2px;
+    transition:0.15s
 }
 button:hover{
     background:#345ca0
@@ -130,11 +131,16 @@ button:disabled{
     box-shadow:inset -2px -2px 4px rgba(0,0,0,0.5);
     pointer-events:none;
     z-index:1;
+    animation:asteroidGlow 6s infinite alternate;
 }
 .asteroid.large{
     width:14px;
     height:14px;
     background:#9aa5b8;
+}
+@keyframes asteroidGlow{
+    0%{opacity:0.7;}
+    100%{opacity:1;}
 }
 .star-node{
     width:18px;
@@ -147,6 +153,7 @@ button:disabled{
     cursor:pointer;
     box-shadow:0 0 8px #4078d8;
     z-index:3;
+    transition: transform 0.2s;
 }
 .star-node.base{
     background:#29c772;
@@ -163,6 +170,10 @@ button:disabled{
     border-color:#72b8ff;
     box-shadow:0 0 12px #499fff;
 }
+.star-node.selected{
+    transform:translate(-50%,-50%) scale(1.55);
+    outline: 2px solid #fff;
+}
 .star-node:hover{
     transform:translate(-50%,-50%) scale(1.35);
 }
@@ -177,6 +188,20 @@ button:disabled{
 .line.enemy-line{
     background:
         repeating-linear-gradient(90deg, rgba(180,60,60,0.9) 0px, rgba(180,60,60,0.9) 8px, transparent 8px, transparent 16px);
+}
+.line.friendly-line{
+    background:
+        repeating-linear-gradient(90deg, rgba(70,190,120,0.9) 0px, rgba(70,190,120,0.9) 8px, transparent 8px, transparent 16px);
+}
+.fleet-dot{
+    position:absolute;
+    width:7px;
+    height:7px;
+    background:#82b1ff;
+    border-radius:50%;
+    box-shadow:0 0 8px #82b1ff;
+    z-index:10;
+    pointer-events:none;
 }
 #log{
     height:140px;
@@ -197,6 +222,9 @@ button:disabled{
 .orange-text{
     color:#ffb86c;
 }
+.purple-text{
+    color:#c784ff;
+}
 .synth-row{
     display:flex;
     align-items:center;
@@ -213,9 +241,56 @@ button:disabled{
 .power-safe{
     color:#62ff8e;
 }
+
+/* ===== 弹窗容器【新增】统一管理所有消息弹窗 ===== */
+#popupContainer{
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index:9999;
+    display:flex;
+    flex-direction:column-reverse;
+    gap:8px;
+    pointer-events:none;
+}
+.msg-popup{
+    padding: 10px 14px;
+    background: rgba(12,19,32,0.92);
+    border:1px solid #345ca0;
+    border-radius:6px;
+    box-shadow: 0 0 16px rgba(60,140,220,0.35);
+    max-width:420px;
+    pointer-events:auto;
+    animation: popupFade 2.2s ease-out forwards;
+}
+.event-popup{
+    border-color:#b47bff;
+    box-shadow: 0 0 18px #783fc066;
+}
+@keyframes popupFade{
+    0% {opacity:0; transform:translateY(12px);}
+    12% {opacity:1; transform:translateY(0px);}
+    85% {opacity:1;}
+    100% {opacity:0;}
+}
+/* 节点悬浮提示 */
+.node-tooltip{
+    position:absolute;
+    background:rgba(12,19,32,0.94);
+    border:1px solid #345ca0;
+    border-radius:4px;
+    padding:6px 10px;
+    pointer-events:none;
+    z-index:999;
+    font-size:13px;
+    white-space:nowrap;
+    display:none;
+}
 </style>
 </head>
 <body>
+<!--弹窗容器【新增】-->
+<div id="popupContainer"></div>
 <div id="game">
     <div id="panel">
         <div class="box">
@@ -243,6 +318,7 @@ button:disabled{
             <p id="capturedTimerLine" class="orange-text"></p>
             <p>敌方战力：<span id="selEnemyPower">——</span></p>
             <p id="powerCompareTip"></p>
+            <button id="abandonCapture" style="margin-top:6px;display:none" class="danger">主动放弃占领</button>
         </div>
 
         <div class="box">
@@ -276,23 +352,28 @@ button:disabled{
             <button id="sendFleet" disabled>派遣舰队前往目标</button>
             <p id="fleetStatus">舰队待命</p>
             <p style="font-size:12px;color:#aaa">敌方战力 = 我方战力 × 0.5 ~ 1.5随机</p>
+            <p style="font-size:12px;color:#c784ff">⚠️航行途中有概率遭遇星域特殊事件</p>
         </div>
 
         <div class="box">
             <h3>📜 航行日志</h3>
             <div id="log"></div>
-            <p style="margin-top:6px;color:#888;">操作：鼠标拖动星图 | 滚轮缩放 | +/-键缩放</p>
+            <p style="margin-top:6px;color:#888;">操作：鼠标拖动星图 | 滚轮缩放 | +/-键缩放 | ESC取消选中</p>
         </div>
     </div>
 
     <div id="starmap">
         <div id="mapContainer">
             <div class="tactical-grid"></div>
+            <div class="node-tooltip" id="tooltip"></div>
         </div>
     </div>
 </div>
 
 <script>
+const popupContainer = document.getElementById("popupContainer");
+const MAX_POP_COUNT = 6;
+
 const defaultData = {
     metal: 800,
     crystal: 300,
@@ -322,17 +403,146 @@ const shipAttr = {
     carrierMult: 3
 }
 
-// 占领点基础产出
+//占领点基础产出
 const CAPTURE_PER_SEC_METAL = 10;
 const CAPTURE_PER_SEC_CRY = 3;
 const MIN_RESPAWN_MIN = 5;
 const MAX_RESPAWN_MIN = 15;
 
-// 敌方浮动区间
+//敌方浮动区间
 const ENEMY_FACTOR_MIN = 0.5;
 const ENEMY_FACTOR_MAX = 1.5;
 
-// 格式化毫秒 → 分:秒
+//==================== 星域随机事件配置 ====================
+const STAR_EVENTS = [
+    {
+        name:"远古遗迹",
+        chance:0.14,
+        type:"bonus",
+        desc:"舰队发现远古文明遗迹，打捞大量物资",
+        metalGain:[800,1600],
+        crystalGain:[300,600],
+        shipLoss:0
+    },
+    {
+        name:"流浪商船",
+        chance:0.16,
+        type:"bonus",
+        desc:"遭遇星际流浪商船，完成交易获得资源",
+        metalGain:[400,900],
+        crystalGain:[200,450],
+        shipLoss:0
+    },
+    {
+        name:"离子风暴",
+        chance:0.13,
+        type:"danger",
+        desc:"剧烈离子风暴席卷舰队，舰船受到损伤",
+        metalGain:[0,0],
+        crystalGain:[0,0],
+        shipLoss:0.22
+    },
+    {
+        name:"星际海盗伏击",
+        chance:0.14,
+        type:"danger",
+        desc:"海盗舰队发起突袭，被迫交战！",
+        metalGain:[150,400],
+        crystalGain:[50,180],
+        shipLoss:0.32
+    },
+    {
+        name:"虚空虫洞",
+        chance:0.09,
+        type:"lucky",
+        desc:"稳定小型虫洞！舰队快速跃迁，无任何损耗",
+        metalGain:[200,500],
+        crystalGain:[80,220],
+        shipLoss:0
+    },
+    {
+        name:"废弃空间站",
+        chance:0.15,
+        type:"bonus",
+        desc:"发现废弃空间站，搜刮遗留物资",
+        metalGain:[500,1100],
+        crystalGain:[220,480],
+        shipLoss:0
+    },
+    {
+        name:"星际信标",
+        chance:0.10,
+        type:"lucky",
+        desc:"古老信标引导舰队避开危险空域",
+        metalGain:[300,700],
+        crystalGain:[120,320],
+        shipLoss:0
+    },
+    {
+        name:"空间裂隙",
+        chance:0.09,
+        type:"random",
+        desc:"不稳定空间裂隙，祸福未知",
+        metalGain:[-300,900],
+        crystalGain:[-100,350],
+        shipLoss:0.18
+    }
+]
+//航行触发事件总概率
+const EVENT_TRIGGER_CHANCE = 0.42;
+
+//随机触发星域事件
+function triggerStarEvent(){
+    if(Math.random() > EVENT_TRIGGER_CHANCE) return false;
+    //随机抽取事件
+    let roll = Math.random();
+    let currentEvent = STAR_EVENTS[Math.floor(Math.random()*STAR_EVENTS.length)];
+
+    let metalGet = Math.floor(currentEvent.metalGain[0] + Math.random()*(currentEvent.metalGain[1]-currentEvent.metalGain[0]));
+    let cryGet = Math.floor(currentEvent.crystalGain[0] + Math.random()*(currentEvent.crystalGain[1]-currentEvent.crystalGain[0]));
+    let lossRate = currentEvent.shipLoss;
+
+    addLog(`<span class="purple-text">【星域特殊事件：${currentEvent.name}】${currentEvent.desc}</span>`);
+    createEventPopup(`🌌星域事件：${currentEvent.name}<br>${currentEvent.desc}`);
+
+    //资源结算
+    if(metalGet !== 0 || cryGet !==0){
+        gameData.metal += metalGet;
+        gameData.crystal += cryGet;
+        if(metalGet>0||cryGet>0){
+            addLog(`<span class="green">事件收益：金属${metalGet} 晶体${cryGet}</span>`);
+        }else{
+            addLog(`<span class="red">空间裂隙吞噬物资！损失金属${Math.abs(metalGet)} 晶体${Math.abs(cryGet)}</span>`);
+        }
+    }
+    //舰船损耗结算
+    if(lossRate > 0){
+        applyShipLoss(lossRate);
+    }
+    return true;
+}
+
+//创建事件专属弹窗【重构】
+function createEventPopup(text){
+    createPopup(text,"event-popup");
+}
+
+//通用弹窗创建函数【新增统一封装】
+function createPopup(text, extraClass=""){
+    //超过上限移除最早弹窗
+    while(popupContainer.children.length >= MAX_POP_COUNT){
+        popupContainer.firstElementChild.remove();
+    }
+    const popup = document.createElement("div");
+    popup.className = "msg-popup " + extraClass;
+    popup.innerHTML = text;
+    popupContainer.appendChild(popup);
+    setTimeout(()=>{
+        popup.remove();
+    },2600);
+}
+
+//格式化毫秒 → 分:秒
 function formatMsTime(ms){
     let sec = Math.floor(ms / 1000);
     let m = Math.floor(sec / 60);
@@ -340,7 +550,7 @@ function formatMsTime(ms){
     return `${m}分${s}秒`;
 }
 
-// 安全计算总战力
+//安全计算总战力
 function calcTotalPower(){
     let p = 0;
     p += Number(gameData.frigate || 0) * shipAttr.frigatePower;
@@ -352,16 +562,16 @@ function calcTotalPower(){
     return Math.floor(p);
 }
 
-// 生成动态敌方战力
+//生成动态敌方战力
 function getRandomEnemyPower(ourPower){
     let factor = ENEMY_FACTOR_MIN + Math.random() * (ENEMY_FACTOR_MAX - ENEMY_FACTOR_MIN);
     return Math.floor(ourPower * factor);
 }
 
-// 舰船损失处理，低级舰船优先损毁
+//舰船损失处理，低级舰船优先损毁
 function applyShipLoss(lossRate){
     let lossLog = [];
-    // 损失顺序：护卫舰→巡洋舰→战巡→战列舰→航母
+    //损失顺序：护卫舰→巡洋舰→战巡→战列舰→航母
     const shipList = [
         {key:"frigate", name:"护卫舰"},
         {key:"cruiser", name:"巡洋舰"},
@@ -381,13 +591,13 @@ function applyShipLoss(lossRate){
         }
     }
     if(lossLog.length > 0){
-        addLog(`<span class="red">⚠️战斗损失：${lossLog.join("、")}</span>`);
+        addLog(`<span class="red">⚠️舰船损失：${lossLog.join("、")}</span>`);
     }else{
-        addLog(`<span class="green">✅本次战斗无舰船损失</span>`);
+        addLog(`<span class="green">✅本次无舰船损失</span>`);
     }
 }
 
-// 计算当前所有占领星域总产出加成
+//计算当前所有占领星域总产出加成
 function getCaptureBonus(){
     let metalBonus = 0;
     let cryBonus = 0;
@@ -402,7 +612,7 @@ function getCaptureBonus(){
     return {metalBonus, cryBonus};
 }
 
-// 检查占领节点是否到期，敌军重生
+//检查占领节点是否到期，敌军重生
 function checkCapturedExpire(){
     const now = Date.now();
     let changed = false;
@@ -410,7 +620,7 @@ function checkCapturedExpire(){
         const refreshTime = gameData.capturedNodes[nodeIdStr];
         if(now >= refreshTime){
             delete gameData.capturedNodes[nodeIdStr];
-            // 占领失效，清除保存的敌方战力，下次点击重新生成
+            //占领失效，清除保存的敌方战力，下次点击重新生成
             delete gameData.nodeEnemyPower[nodeIdStr];
             const nodeId = Number(nodeIdStr);
             const node = starNodes.find(n=>n.id === nodeId);
@@ -427,9 +637,9 @@ function checkCapturedExpire(){
     }
 }
 
-// 占领星域
+//占领星域
 function captureNode(node){
-    // 随机5~15分钟重生
+    //随机5~15分钟重生
     const randomMin = MIN_RESPAWN_MIN + Math.random()*(MAX_RESPAWN_MIN - MIN_RESPAWN_MIN);
     const refreshTs = Date.now() + randomMin * 60 * 1000;
     gameData.capturedNodes[node.id] = refreshTs;
@@ -477,6 +687,7 @@ const links = [
 
 const mapDom = document.getElementById("starmap");
 const mapContainer = document.getElementById("mapContainer");
+const tooltipDom = document.getElementById("tooltip");
 
 let offsetX = 0, offsetY = 0;
 let dragStartX, dragStartY;
@@ -495,6 +706,7 @@ mapDom.addEventListener('mousedown', (e) => {
     dragStartX = e.clientX - offsetX;
     dragStartY = e.clientY - offsetY;
     mapDom.style.cursor = "grabbing";
+    tooltipDom.style.display = "none";
 });
 window.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
@@ -528,13 +740,19 @@ mapDom.addEventListener('wheel', (e)=>{
 document.addEventListener('keydown', (e)=>{
     if(e.key === "+" || e.key === "="){
         scale += ZOOM_STEP;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        updateTransform();
     }else if(e.key === "-"){
         scale -= ZOOM_STEP;
-    }else{
-        return;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        updateTransform();
+    }else if(e.key === "Escape"){
+        //ESC清空选中
+        gameData.selectedNode = null;
+        cachedEnemyPower = 0;
+        renderStarMap();
+        updateUI();
     }
-    scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-    updateTransform();
 })
 
 function saveGame(){
@@ -591,7 +809,7 @@ function initGame(){
 }
 
 function renderStarMap(){
-    mapContainer.querySelectorAll(".zone-circle, .line, .star-node,.asteroid").forEach(el => el.remove());
+    mapContainer.querySelectorAll(".zone-circle, .line, .star-node,.asteroid,.fleet-dot").forEach(el => el.remove());
     const asteroids = [
         {x:150,y:120,size:""},
         {x:520,y:90,size:"large"},
@@ -650,9 +868,33 @@ function renderStarMap(){
         }else{
             div.classList.add("enemy");
         }
+        //选中高亮
+        if(gameData.selectedNode && gameData.selectedNode.id === node.id){
+            div.classList.add("selected");
+        }
         div.style.left = node.x + "px";
         div.style.top = node.y + "px";
         div.onclick = ()=>selectNode(node);
+
+        //悬浮提示
+        div.onmouseenter = (ev)=>{
+            tooltipDom.style.display = "block";
+            tooltipDom.style.left = (ev.clientX+12)+"px";
+            tooltipDom.style.top = (ev.clientY+12)+"px";
+            let statusText = "";
+            if(node.isBase) statusText = "我方基地";
+            else if(gameData.capturedNodes[node.id] && Date.now() < gameData.capturedNodes[node.id]) statusText = "✅已占领";
+            else statusText = "⚠️敌方控制区";
+            tooltipDom.innerHTML = `${node.name} | ${statusText}`;
+        }
+        div.onmousemove = (ev)=>{
+            tooltipDom.style.left = (ev.clientX+12)+"px";
+            tooltipDom.style.top = (ev.clientY+12)+"px";
+        }
+        div.onmouseleave = ()=>{
+            tooltipDom.style.display = "none";
+        }
+
         mapContainer.appendChild(div);
     });
 }
@@ -667,7 +909,7 @@ function selectNode(node){
         statusText = "【已占领，持续产出资源】";
         cachedEnemyPower = 0;
     }else{
-        // 核心改动：存在记录就复用，不存在才生成新战力
+        //核心改动：存在记录就复用，不存在才生成新战力
         if(gameData.nodeEnemyPower[node.id] === undefined){
             gameData.nodeEnemyPower[node.id] = getRandomEnemyPower(calcTotalPower());
         }
@@ -676,6 +918,7 @@ function selectNode(node){
     }
     addLog(`选中星域：${node.name} ${statusText}`);
     refreshSendBtn();
+    renderStarMap();
     updateUI();
 }
 
@@ -687,10 +930,12 @@ function refreshSendBtn(){
     }
 }
 
+// ===== 修改后的addLog，调用统一弹窗函数 =====
 function addLog(text){
     const logDom = document.getElementById("log");
     logDom.innerHTML += "> "+text+"<br>";
     logDom.scrollTop = logDom.scrollHeight;
+    createPopup(text);
 }
 
 function updateUI(){
@@ -716,16 +961,20 @@ function updateUI(){
     document.getElementById("selNodeName").innerText = selNode ? selNode.name : "无";
     const enemyPowerDom = document.getElementById("selEnemyPower");
     const compareTipDom = document.getElementById("powerCompareTip");
+    const abandonBtn = document.getElementById("abandonCapture");
 
     let timerHtml = "";
+    let showAbandon = false;
     if(selNode && !selNode.isBase){
         const refreshTs = gameData.capturedNodes[selNode.id];
         const now = Date.now();
         if(refreshTs && now < refreshTs){
             const remain = refreshTs - now;
             timerHtml = `敌军守军刷新倒计时：${formatMsTime(remain)}`;
+            showAbandon = true;
         }
     }
+    abandonBtn.style.display = showAbandon ? "block" : "none";
     document.getElementById("capturedTimerLine").innerHTML = timerHtml;
 
     //战力颜色+对比提示逻辑
@@ -768,6 +1017,18 @@ function updateUI(){
     }
     document.getElementById("upgradeCost").innerHTML = html;
     refreshSendBtn();
+}
+
+//主动放弃占领
+document.getElementById("abandonCapture").onclick = ()=>{
+    const node = gameData.selectedNode;
+    if(!node) return;
+    delete gameData.capturedNodes[node.id];
+    delete gameData.nodeEnemyPower[node.id];
+    addLog(`<span class="orange-text">主动放弃【${node.name}】占领状态！</span>`);
+    renderStarMap();
+    updateUI();
+    saveGame();
 }
 
 function gameLoop(){
@@ -865,18 +1126,52 @@ document.getElementById("sendFleet").onclick = ()=>{
     document.getElementById("sendFleet").disabled = true;
     addLog(`舰队出发前往【${target.name}】`);
 
-    setTimeout(()=>{
+    //航行光点动画
+    const baseNode = starNodes.find(x=>x.isBase);
+    createFleetAnim(baseNode.x,baseNode.y,target.x,target.y,6000,()=>{
+        //航行结束战斗
         const ourPower = calcTotalPower();
         const enemyPower = cachedEnemyPower;
-
         addLog(`遭遇敌方私掠舰队！敌方战力：${enemyPower}`);
         battle(ourPower, enemyPower, target);
-
         gameData.fleetBusy = false;
         document.getElementById("fleetStatus").innerText = "舰队待命";
         updateUI();
         saveGame();
-    },6000)
+    });
+}
+
+//舰队移动光点动画（中途3秒触发星域事件）
+function createFleetAnim(sx,sy,ex,ey,duration,finishCallback){
+    const dot = document.createElement("div");
+    dot.className = "fleet-dot";
+    mapContainer.appendChild(dot);
+    const start = Date.now();
+    let eventTriggered = false;
+    function animate(){
+        const t = Date.now() - start;
+        let p = Math.min(t/duration,1);
+        let px = sx + (ex-sx)*p;
+        let py = sy + (ey-sy)*p;
+        dot.style.left = px+"px";
+        dot.style.top = py+"px";
+
+        //航行一半（3秒）判定触发随机星域事件
+        if(p >= 0.5 && !eventTriggered){
+            eventTriggered = true;
+            triggerStarEvent();
+            updateUI();
+            saveGame();
+        }
+
+        if(p<1){
+            requestAnimationFrame(animate);
+        }else{
+            dot.remove();
+            finishCallback();
+        }
+    }
+    animate();
 }
 
 //战斗结算
@@ -896,6 +1191,7 @@ function battle(ourPower, enemyPower, targetNode){
         addLog(`❌ 战斗失败！舰队遭受重创，仅少量物资回收`);
         applyShipLoss(0.75); //战败最高75%舰船损毁
         collectResource(0.4);
+        //【修复BUG】战斗失败不再占领星域
     }
 }
 
@@ -918,11 +1214,10 @@ updateUI();
 gameLoop();
 addLog("欢迎来到无尽星域！按住鼠标拖动星图自由移动视角");
 addLog("舰船合成规则：2低级舰合成1高级舰，战力为下级3倍");
-addLog("更新：星域敌方战力首次点击固定，占领前永久不变！");
-addLog("新增：战力数值颜色区分+战力对比提示");
+addLog("星域敌方战力首次点击固定，占领前永久不变！");
 addLog("击败敌军星域可占领，持续产出资源，敌军5~15分钟后重新刷新");
-addLog("敌军刷新后，再次点击会重新生成新战力");
-addLog("操作：鼠标滚轮缩放地图，键盘 + / - 放大缩小");
+addLog("⚠️舰队航行途中可能触发星域特殊事件，机遇与危险并存");
+addLog("操作：鼠标滚轮缩放地图，键盘 + / - 放大缩小，ESC取消选中");
 </script>
 </body>
 </html>
