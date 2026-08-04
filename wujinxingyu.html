@@ -1097,10 +1097,10 @@ function updateUI(){
             tipText = `<span class="power-safe">我方优势，胜率较高 (战力比值:${ratio.toFixed(2)})</span>`;
         }else if(ratio >= 0.85){
             enemyPowerDom.className = "power-warning";
-            tipText = `<span class="power-warning">双方势均力敌，风险较大 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-warning">少量损失 (战力比值:${ratio.toFixed(2)})</span>`;
         }else{
             enemyPowerDom.className = "power-danger";
-            tipText = `<span class="power-danger">敌方战力更强，不建议进攻 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-danger">毫无胜算 (战力比值:${ratio.toFixed(2)})</span>`;
         }
         compareTipDom.innerHTML = tipText;
     }else{
