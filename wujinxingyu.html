@@ -377,6 +377,21 @@ button:disabled{
             <p style="font-size:12px;color:#aaa">敌方战力 = 我方战力 × 0.5 ~ 1.5随机</p>
             <p style="font-size:12px;color:#c784ff">⚠️航行途中有概率遭遇星域特殊事件</p>
         </div>
+        <div class="box">
+            <h3>💱 星际资源交易所</h3>
+            <p style="font-size:12px;color:#aaa;">兑换比例：10金属 ⇋ 3晶体</p>
+            <div style="margin:6px 0;">
+                <button id="tradeMetalToCrystal1000">金属→晶体 1000</button>
+                <button id="tradeMetalToCrystal5000">金属→晶体 5000</button>
+                <button id="tradeMetalToCrystalMax">金属→晶体 全部</button>
+            </div>
+            <div style="margin:6px 0;">
+                <button id="tradeCrystalToMetal1000">晶体→金属 1000</button>
+                <button id="tradeCrystalToMetal5000">晶体→金属 5000</button>
+                <button id="tradeCrystalToMetalMax">晶体→金属 全部</button>
+            </div>
+            <p style="font-size:12px;color:#888;">消耗对应资源换取另一类资源，注意不要过度交易导致资源耗尽</p>
+        </div>
 
         <div class="box">
             <h3>📜 航行日志</h3>
@@ -1300,6 +1315,65 @@ function collectResource(multiplier = 1){
 document.getElementById("saveBtn").onclick = saveGame;
 document.getElementById("loadBtn").onclick = loadGame;
 document.getElementById("clearBtn").onclick = clearSave;
+//====================资源交易系统====================
+//交易比例 10金属换3晶体
+const TRADE_METAL_PER = 10;
+const TRADE_CRY_PER = 3;
+
+/**
+ * metalToCrystal：金属兑换晶体
+ * @param tradeMetalAmount 消耗多少金属
+ */
+function metalToCrystal(tradeMetalAmount){
+    if(tradeMetalAmount <= 0) return false;
+    if(gameData.metal < tradeMetalAmount){
+        addLog("<span class='red'>❌金属不足，兑换失败</span>");
+        return false;
+    }
+    //能兑换多少晶体
+    const getCrystal = Math.floor(tradeMetalAmount / TRADE_METAL_PER * TRADE_CRY_PER);
+    gameData.metal -= tradeMetalAmount;
+    gameData.crystal += getCrystal;
+    addLog(`<span class="green">💱交易完成：消耗金属${tradeMetalAmount}，获得晶体${getCrystal}</span>`);
+    createPopup(`💱金属→晶体：-${tradeMetalAmount}金属 +${getCrystal}晶体`);
+    updateUI();
+    saveGame();
+    return true;
+}
+
+/**
+ * crystalToMetal 晶体兑换金属
+ * @param tradeCrystalAmount 消耗多少晶体
+ */
+function crystalToMetal(tradeCrystalAmount){
+    if(tradeCrystalAmount <= 0) return false;
+    if(gameData.crystal < tradeCrystalAmount){
+        addLog("<span class='red'>❌晶体不足，兑换失败</span>");
+        return false;
+    }
+    const getMetal = Math.floor(tradeCrystalAmount / TRADE_CRY_PER * TRADE_METAL_PER);
+    gameData.crystal -= tradeCrystalAmount;
+    gameData.metal += getMetal;
+    addLog(`<span class="green">💱交易完成：消耗晶体${tradeCrystalAmount}，获得金属${getMetal}</span>`);
+    createPopup(`💱晶体→金属：-${tradeCrystalAmount}晶体 +${getMetal}金属`);
+    updateUI();
+    saveGame();
+    return true;
+}
+
+//绑定按钮事件
+document.getElementById("tradeMetalToCrystal1000").onclick = ()=>metalToCrystal(1000);
+document.getElementById("tradeMetalToCrystal5000").onclick = ()=>metalToCrystal(5000);
+document.getElementById("tradeMetalToCrystalMax").onclick = ()=>{
+    metalToCrystal(Math.floor(gameData.metal));
+};
+
+document.getElementById("tradeCrystalToMetal1000").onclick = ()=>crystalToMetal(1000);
+document.getElementById("tradeCrystalToMetal5000").onclick = ()=>crystalToMetal(5000);
+document.getElementById("tradeCrystalToMetalMax").onclick = ()=>{
+    crystalToMetal(Math.floor(gameData.crystal));
+};
+//====================交易系统结束====================
 
 initGame();
 renderStarMap();
