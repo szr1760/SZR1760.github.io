@@ -487,7 +487,7 @@ const STAR_EVENTS = [
         desc:"海盗舰队发起突袭，被迫交战！",
         metalGain:[150,400],
         crystalGain:[50,180],
-        shipLoss:0.32
+        shipLoss:0.22
     },
     {
         name:"虚空虫洞",
@@ -607,33 +607,51 @@ function getRandomEnemyPower(ourPower){
 }
 
 //舰船损失处理，低级舰船优先损毁
+//【优化补丁】新版舰船损失：优先损毁低级舰船，逐级消耗
 function applyShipLoss(lossRate){
+    if(lossRate <= 0) return;
     let lossLog = [];
-    //损失顺序：护卫舰→巡洋舰→战巡→战列舰→航母
+
+    // 舰船顺序：由低到高，优先损失前面的
     const shipList = [
-        {key:"frigate", name:"护卫舰"},
-        {key:"cruiser", name:"巡洋舰"},
-        {key:"bcruiser", name:"战列巡洋舰"},
-        {key:"battleship", name:"战列舰"},
-        {key:"carrier", name:"航空母舰"}
+        {key:"frigate", name:"护卫舰", power: shipAttr.frigatePower},
+        {key:"cruiser", name:"巡洋舰", power: shipAttr.frigatePower * shipAttr.cruiserMult},
+        {key:"bcruiser", name:"战列巡洋舰", power: shipAttr.frigatePower * shipAttr.cruiserMult * shipAttr.bcruiserMult},
+        {key:"battleship", name:"战列舰", power: shipAttr.frigatePower * shipAttr.cruiserMult * shipAttr.bcruiserMult * shipAttr.battleshipMult},
+        {key:"carrier", name:"航空母舰", power: shipAttr.frigatePower * shipAttr.cruiserMult * shipAttr.bcruiserMult * shipAttr.battleshipMult * shipAttr.carrierMult}
     ];
 
+    // 计算舰队总战力 & 需要损失的战力总值
+    let totalPower = calcTotalPower();
+   let fluctuate = 0.75 + Math.random() * 0.5; //75%~125%浮动
+   let needLosePower = Math.floor(totalPower * lossRate * fluctuate);
+
+
+    // 从最低级开始依次扣除战力
     for(let ship of shipList){
-        let count = gameData[ship.key];
-        if(count <= 0) continue;
-        let loseNum = Math.floor(count * lossRate * Math.random());
-        loseNum = Math.min(loseNum, count);
-        if(loseNum > 0){
-            gameData[ship.key] -= loseNum;
-            lossLog.push(`${ship.name} ×${loseNum}`);
+        if(needLosePower <= 0) break;
+        let shipCount = gameData[ship.key];
+        if(shipCount <= 0) continue;
+        const singlePower = ship.power;
+
+        // 最多能损失该类型舰船数量
+        let maxLoseThisType = Math.floor(needLosePower / singlePower);
+        let realLose = Math.min(maxLoseThisType, shipCount);
+
+        if(realLose > 0){
+            gameData[ship.key] -= realLose;
+            needLosePower -= realLose * singlePower;
+            lossLog.push(`${ship.name} ×${realLose}`);
         }
     }
+
     if(lossLog.length > 0){
         addLog(`<span class="red">⚠️舰船损失：${lossLog.join("、")}</span>`);
     }else{
         addLog(`<span class="green">✅本次无舰船损失</span>`);
     }
 }
+
 
 //计算当前所有占领星域总产出加成
 function getCaptureBonus(){
@@ -1097,10 +1115,10 @@ function updateUI(){
             tipText = `<span class="power-safe">我方优势，胜率较高 (战力比值:${ratio.toFixed(2)})</span>`;
         }else if(ratio >= 0.85){
             enemyPowerDom.className = "power-warning";
-            tipText = `<span class="power-warning">少量损失 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-warning">双方势均力敌，风险较大 (战力比值:${ratio.toFixed(2)})</span>`;
         }else{
             enemyPowerDom.className = "power-danger";
-            tipText = `<span class="power-danger">毫无胜算 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-danger">敌方战力更强，不建议进攻 (战力比值:${ratio.toFixed(2)})</span>`;
         }
         compareTipDom.innerHTML = tipText;
     }else{
@@ -1288,7 +1306,7 @@ function battle(ourPower, enemyPower, targetNode){
     const ratio = ourPower / enemyPower;
     if(ratio > 1.2){
         addLog("✅ 战斗大胜！敌方舰队被击溃");
-        applyShipLoss(0.15); //大胜，最多损失15%舰船
+        applyShipLoss(0.05); //大胜，最多损失5%舰船
         captureNode(targetNode);
         collectResource();
     }else if(ratio >= 0.85){
