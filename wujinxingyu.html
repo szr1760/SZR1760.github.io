@@ -1306,7 +1306,7 @@ function battle(ourPower, enemyPower, targetNode){
     const ratio = ourPower / enemyPower;
     if(ratio > 1.2){
         addLog("✅ 战斗大胜！敌方舰队被击溃");
-        applyShipLoss(0.05); //大胜，最多损失5%舰船
+        applyShipLoss(0.01); //大胜，最多损失1%舰船
         captureNode(targetNode);
         collectResource();
     }else if(ratio >= 0.85){
