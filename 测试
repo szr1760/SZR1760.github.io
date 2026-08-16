@@ -96,18 +96,19 @@ button:disabled{
     background-image:
         linear-gradient(rgba(30, 50, 90, 0.35) 1px, transparent 1px),
         linear-gradient(90deg, rgba(30, 50, 90, 0.35) 1px, transparent 1px);
-    background-size:40px 40px;
+    background-size:100px 100px;  /* 格子大小 = 建筑格子尺寸 */
     pointer-events:none;
     z-index:1;
 }
 .zone-circle{
     position:absolute;
-    border:1px solid rgba(60,90,140,0.75);
+    border:1px solid rgba(60,90,140,0.5);
     border-radius:50%;
     transform:translate(-50%,-50%);
     pointer-events:none;
-    box-shadow:0 0 12px rgba(60,90,140,0.45);
     z-index:2;
+    width:80px !important;
+    height:80px !important;
 }
 .zone-circle.base-zone{
     border-color:rgba(40,180,110,0.8);
@@ -142,40 +143,62 @@ button:disabled{
     0%{opacity:0.7;}
     100%{opacity:1;}
 }
-.star-node{
-    width:18px;
-    height:18px;
-    border-radius:50%;
-    background:#4078d8;
+.building{
+    width:64px;
+    height:64px;
+    border-radius:8px;
     position:absolute;
     transform:translate(-50%,-50%);
-    border:2px solid #82b1ff;
     cursor:pointer;
-    box-shadow:0 0 8px #4078d8;
     z-index:3;
     transition: transform 0.2s;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:22px;
+    border:2px solid rgba(255,255,255,0.2);
 }
-.star-node.base{
-    background:#29c772;
+.building.base{
+    background:linear-gradient(135deg,#29c772,#1a9d58);
     border-color:#53ff9e;
-    box-shadow:0 0 10px #29c772;
+    box-shadow:0 0 14px #29c772;
 }
-.star-node.enemy{
-    background:#d63b3b;
+.building.enemy{
+    background:linear-gradient(135deg,#d63b3b,#a12828);
     border-color:#ff6b6b;
     box-shadow:0 0 10px #d63b3b;
 }
-.star-node.captured{
-    background:#3b88d6;
+.building.captured{
+    background:linear-gradient(135deg,#3b88d6,#2a6bb0);
     border-color:#72b8ff;
     box-shadow:0 0 12px #499fff;
 }
-.star-node.selected{
-    transform:translate(-50%,-50%) scale(1.55);
+.building.selected{
+    transform:translate(-50%,-50%) scale(1.2);
     outline: 2px solid #fff;
+    z-index:5;
 }
-.star-node:hover{
-    transform:translate(-50%,-50%) scale(1.35);
+.building:hover{
+    transform:translate(-50%,-50%) scale(1.1);
+}
+.building-name{
+    position:absolute;
+    bottom:-22px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:11px;
+    color:#c9d1e0;
+    white-space:nowrap;
+    text-shadow:0 0 4px #000;
+}
+.building-power{
+    position:absolute;
+    top:-18px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:10px;
+    color:#ff9999;
+    white-space:nowrap;
 }
 .line{
     position:absolute;
@@ -353,6 +376,21 @@ button:disabled{
             <p id="fleetStatus">舰队待命</p>
             <p style="font-size:12px;color:#aaa">敌方战力 = 我方战力 × 0.5 ~ 1.5随机</p>
             <p style="font-size:12px;color:#c784ff">⚠️航行途中有概率遭遇星域特殊事件</p>
+        </div>
+        <div class="box">
+            <h3>💱 星际资源交易所</h3>
+            <p style="font-size:12px;color:#aaa;">兑换比例：10金属 ⇋ 3晶体</p>
+            <div style="margin:6px 0;">
+                <button id="tradeMetalToCrystal1000">金属→晶体 1000</button>
+                <button id="tradeMetalToCrystal5000">金属→晶体 5000</button>
+                <button id="tradeMetalToCrystalMax">金属→晶体 全部</button>
+            </div>
+            <div style="margin:6px 0;">
+                <button id="tradeCrystalToMetal1000">晶体→金属 1000</button>
+                <button id="tradeCrystalToMetal5000">晶体→金属 5000</button>
+                <button id="tradeCrystalToMetalMax">晶体→金属 全部</button>
+            </div>
+            <p style="font-size:12px;color:#888;">消耗对应资源换取另一类资源，注意不要过度交易导致资源耗尽</p>
         </div>
 
         <div class="box">
@@ -623,7 +661,7 @@ function checkCapturedExpire(){
             //占领失效，清除保存的敌方战力，下次点击重新生成
             delete gameData.nodeEnemyPower[nodeIdStr];
             const nodeId = Number(nodeIdStr);
-            const node = starNodes.find(n=>n.id === nodeId);
+            const node = buildingList.find(n=>n.id === nodeId);
             if(node){
                 addLog(`<span class="red">⚠️【${node.name}】敌方守军重新抵达星域！占领增益失效</span>`);
             }
@@ -647,43 +685,104 @@ function captureNode(node){
     renderStarMap();
 }
 
-const starNodes = [
-    {id:0,x:220,y:260,isBase:true,name:"我方基地"},
-    {id:1,x:420,y:180,name:"阿尔法矿点"},
-    {id:2,x:600,y:320,name:"贝塔遗迹"},
-    {id:3,x:360,y:450,name:"伽马星云"},
-    {id:4,x:780,y:220,name:"德尔塔空域"},
-    {id:5,x:120,y:140,name:"伊普西隆前哨"},
-    {id:6,x:100,y:420,name:"泽塔小行星带"},
-    {id:7,x:500,y:80,name:"埃塔空间站"},
-    {id:8,x:880,y:120,name:"西塔深空"},
-    {id:9,x:920,y:360,name:"约塔残骸区"},
-    {id:10,x:720,y:480,name:"卡帕气云"},
-    {id:11,x:480,y:560,name:"拉姆达中继站"},
-    {id:12,x:240,y:580,name:"缪冰巨星空域"},
-    {id:13,x:60,y:300,name:"纽暗物质区"},
-    {id:14,x:640,y:100,name:"克西补给空域"},
-    {id:15,x:820,y:540,name:"奥米克隆要塞"},
-    {id:16,x:340,y:80,name:"派晶体星云"},
-    {id:17,x:560,y:640,name:"洛远古星门"},
-    {id:18,x:140,y:640,name:"西格玛尘埃带"},
-    {id:19,x:960,y:260,name:"陶边界空域"}
-]
+// ============ 网格 & 建筑系统 ============
+const GRID_SIZE = 100;        // 每个格子 = 100px，和 CSS tactical-grid 对应
+const MAP_WIDTH = 2000;       // 地图宽度（世界坐标）
+const MAP_HEIGHT = 1600;      // 地图高度
+let buildingList = [];        // 所有建筑数组
+const gridOccupied = new Set(); // 格子占用记录 key:"gx,gy"
 
-const links = [
-    [0,1],[0,3],[0,5],[0,6],[0,13],
-    [1,2],[1,7],[1,14],[1,16],
-    [2,4],[2,10],
-    [3,11],[3,12],
-    [4,8],[4,9],[4,19],
-    [5,13],[5,16],
-    [6,12],[6,18],
-    [7,14],
-    [9,10],[9,15],
-    [10,15],[10,17],
-    [11,12],[11,17],[11,18],
-    [15,17]
-]
+// 30种建筑定义
+const buildingTypes = [
+    {id:1,name:"指挥基地",icon:"🏛️",type:"main",enemyPower:0},
+    {id:2,name:"金属采集平台",icon:"⚙️",type:"resource",output:{metal:8,crystal:0}},
+    {id:3,name:"晶体提炼工厂",icon:"💎",type:"resource",output:{metal:0,crystal:6}},
+    {id:4,name:"舰船船坞",icon:"🚀",type:"dock"},
+    {id:5,name:"防御要塞",icon:"🛡️",type:"defense"},
+    {id:6,name:"信号中继站",icon:"📡",type:"vision"},
+    {id:7,name:"物资仓储站",icon:"📦",type:"storage"},
+    {id:8,name:"维修空间站",icon:"🔧",type:"repair"},
+    {id:9,name:"战术观测台",icon:"🔭",type:"scout"},
+    {id:10,name:"轨道炮台阵地",icon:"💥",type:"defense"},
+    {id:11,name:"资源中转站",icon:"🔄",type:"resource"},
+    {id:12,name:"前线集结港",icon:"⚓",type:"dock"},
+    {id:13,name:"远古文明遗迹",icon:"🏺",type:"relic",eventRate:0.4},
+    {id:14,name:"废弃科研空间站",icon:"🔬",type:"relic"},
+    {id:15,name:"星际信标塔",icon:"🗼",type:"beacon"},
+    {id:16,name:"虫洞稳定枢纽",icon:"🌀",type:"wormhole"},
+    {id:17,name:"流浪者贸易港",icon:"🏪",type:"trade"},
+    {id:18,name:"破碎星门残骸",icon:"🚪",type:"relic"},
+    {id:19,name:"古代船坞残骸",icon:"⛵",type:"relic"},
+    {id:20,name:"晶体矿脉遗址",icon:"💠",type:"resource"},
+    {id:21,name:"失联勘探基地",icon:"🏚️",type:"relic"},
+    {id:22,name:"星云观测哨",icon:"🌌",type:"scout"},
+    {id:23,name:"海盗据点",icon:"☠️",type:"enemy"},
+    {id:24,name:"掠夺者停泊港",icon:"🔱",type:"enemy"},
+    {id:25,name:"虚空虫族巢穴",icon:"👾",type:"enemy"},
+    {id:26,name:"自动防御炮台群",icon:"🎯",type:"enemy"},
+    {id:27,name:"敌军前线指挥部",icon:"🏰",type:"enemy"},
+    {id:28,name:"掠夺物资仓库",icon:"💰",type:"enemy"},
+    {id:29,name:"星际伏击阵地",icon:"⚔️",type:"enemy"},
+    {id:30,name:"敌方临时船坞",icon:"🛸",type:"enemy"},
+];
+
+// 世界坐标 → 网格坐标
+function posToGrid(px, py){
+    const gx = Math.floor(px / GRID_SIZE);
+    const gy = Math.floor(py / GRID_SIZE);
+    return { gx, gy, key: `${gx},${gy}` };
+}
+
+// 检测格子是否被占用
+function isGridOccupied(px, py){
+    return gridOccupied.has(posToGrid(px, py).key);
+}
+
+// 创建建筑（自动格子对齐 + 防重叠）
+function createBuilding(worldX, worldY, typeIndex){
+    const grid = posToGrid(worldX, worldY);
+    if(gridOccupied.has(grid.key)) return null;
+    const buildType = buildingTypes[typeIndex];
+    const building = {
+        id: buildingList.length,
+        x: grid.gx * GRID_SIZE + GRID_SIZE/2,
+        y: grid.gy * GRID_SIZE + GRID_SIZE/2,
+        gridX: grid.gx,
+        gridY: grid.gy,
+        gridKey: grid.key,
+        type: buildType,
+        isBase: buildType.type === "main",
+        name: buildType.name
+    };
+    gridOccupied.add(grid.key);
+    buildingList.push(building);
+    return building;
+}
+
+// 初始化所有建筑
+function initBuildings(){
+    buildingList = [];
+    gridOccupied.clear();
+    
+    // 1. 玩家指挥基地（中心偏左）
+    createBuilding(300, 400, 0);
+    
+    // 2. 随机生成 35 个建筑散布全图
+    const total = 35;
+    for(let i=0; i<total; i++){
+        let attempts = 0;
+        while(attempts < 80){
+            const wx = 150 + Math.random() * (MAP_WIDTH - 300);
+            const wy = 150 + Math.random() * (MAP_HEIGHT - 300);
+            const typeIdx = 1 + Math.floor(Math.random() * 29); // 1~29号建筑
+            if(!isGridOccupied(wx, wy)){
+                createBuilding(wx, wy, typeIdx);
+                break;
+            }
+            attempts++;
+        }
+    }
+}
 
 const mapDom = document.getElementById("starmap");
 const mapContainer = document.getElementById("mapContainer");
@@ -784,6 +883,9 @@ function loadGame(){
         updateUI();
         renderStarMap();
         addLog("✅ 存档读取成功");
+    // 恢复建筑占领状态和战力
+    if(loadData.capturedNodes) gameData.capturedNodes = loadData.capturedNodes;
+    if(loadData.nodeEnemyPower) gameData.nodeEnemyPower = loadData.nodeEnemyPower;
         return true;
     }catch(e){
         addLog("❌ 存档损坏");
@@ -794,12 +896,14 @@ function clearSave(){
     localStorage.removeItem("lagrange_save");
     gameData = {...defaultData};
     cachedEnemyPower = 0;
+    initBuildings();  // 重新生成建筑
     updateUI();
     renderStarMap();
     addLog("🗑️ 存档已清除，重置游戏");
 }
 
 function initGame(){
+    initBuildings(); // 先初始化建筑
     let save = localStorage.getItem("lagrange_save");
     if(save){
         loadGame();
@@ -809,7 +913,10 @@ function initGame(){
 }
 
 function renderStarMap(){
-    mapContainer.querySelectorAll(".zone-circle, .line, .star-node,.asteroid,.fleet-dot").forEach(el => el.remove());
+    // 清空旧元素
+    mapContainer.querySelectorAll(".zone-circle, .line, .star-node, .building, .asteroid, .fleet-dot, .building-name, .building-power").forEach(el => el.remove());
+
+    // 装饰小行星（保留）
     const asteroids = [
         {x:150,y:120,size:""},
         {x:520,y:90,size:"large"},
@@ -828,64 +935,67 @@ function renderStarMap(){
         div.style.top = a.y + "px";
         mapContainer.appendChild(div);
     });
-    starNodes.forEach(node=>{
+
+    // 渲染势力范围圈
+    buildingList.forEach(build=>{
         const circle = document.createElement("div");
         circle.className = "zone-circle";
-        if(node.isBase) {
+        if(build.isBase){
             circle.classList.add("base-zone");
-        }else if(gameData.capturedNodes[node.id] && Date.now() < gameData.capturedNodes[node.id]){
+        }else if(gameData.capturedNodes[build.id] && Date.now() < gameData.capturedNodes[build.id]){
             circle.classList.add("captured-zone");
         }else{
             circle.classList.add("enemy-zone");
         }
-        circle.style.left = node.x + "px";
-        circle.style.top = node.y + "px";
-        circle.style.width = "70px";
-        circle.style.height = "70px";
+        circle.style.left = build.x + "px";
+        circle.style.top = build.y + "px";
         mapContainer.appendChild(circle);
     });
-    links.forEach(([a,b])=>{
-        let n1 = starNodes[a], n2 = starNodes[b];
-        const dx = n2.x - n1.x;
-        const dy = n2.y - n1.y;
-        const len = Math.hypot(dx,dy);
-        const angle = Math.atan2(dy,dx)*180/Math.PI;
-        const line = document.createElement("div");
-        line.className = "line enemy-line";
-        line.style.left = n1.x + "px";
-        line.style.top = n1.y + "px";
-        line.style.width = len + "px";
-        line.style.transform = `rotate(${angle}deg)`;
-        mapContainer.appendChild(line);
-    });
-    starNodes.forEach(node=>{
+
+    // 渲染所有建筑
+    buildingList.forEach(build=>{
         const div = document.createElement("div");
-        div.className = "star-node";
-        if(node.isBase){
+        div.className = "building";
+        if(build.isBase){
             div.classList.add("base");
-        }else if(gameData.capturedNodes[node.id] && Date.now() < gameData.capturedNodes[node.id]){
+        }else if(gameData.capturedNodes[build.id] && Date.now() < gameData.capturedNodes[build.id]){
             div.classList.add("captured");
         }else{
             div.classList.add("enemy");
         }
-        //选中高亮
-        if(gameData.selectedNode && gameData.selectedNode.id === node.id){
+        if(gameData.selectedNode && gameData.selectedNode.id === build.id){
             div.classList.add("selected");
         }
-        div.style.left = node.x + "px";
-        div.style.top = node.y + "px";
-        div.onclick = ()=>selectNode(node);
+        div.style.left = build.x + "px";
+        div.style.top = build.y + "px";
+        div.innerHTML = build.type.icon;
+        div.onclick = ()=>selectNode(build);
 
-        //悬浮提示
+        // 建筑名称
+        const nameLabel = document.createElement("div");
+        nameLabel.className = "building-name";
+        nameLabel.innerText = build.name;
+        div.appendChild(nameLabel);
+
+        // 敌方战力（未占领时显示）
+        if(!build.isBase && !(gameData.capturedNodes[build.id] && Date.now() < gameData.capturedNodes[build.id])){
+            const powerLabel = document.createElement("div");
+            powerLabel.className = "building-power";
+            const power = gameData.nodeEnemyPower[build.id] || "?";
+            powerLabel.innerText = "⚔" + power;
+            div.appendChild(powerLabel);
+        }
+
+        // 悬浮提示
         div.onmouseenter = (ev)=>{
             tooltipDom.style.display = "block";
             tooltipDom.style.left = (ev.clientX+12)+"px";
             tooltipDom.style.top = (ev.clientY+12)+"px";
             let statusText = "";
-            if(node.isBase) statusText = "我方基地";
-            else if(gameData.capturedNodes[node.id] && Date.now() < gameData.capturedNodes[node.id]) statusText = "✅已占领";
-            else statusText = "⚠️敌方控制区";
-            tooltipDom.innerHTML = `${node.name} | ${statusText}`;
+            if(build.isBase) statusText = "🏛️ 我方指挥基地";
+            else if(gameData.capturedNodes[build.id] && Date.now() < gameData.capturedNodes[build.id]) statusText = "✅ 已占领";
+            else statusText = "⚠️ 敌方控制区";
+            tooltipDom.innerHTML = `${build.type.icon} ${build.name} | ${statusText}`;
         }
         div.onmousemove = (ev)=>{
             tooltipDom.style.left = (ev.clientX+12)+"px";
@@ -898,25 +1008,24 @@ function renderStarMap(){
         mapContainer.appendChild(div);
     });
 }
-
 function selectNode(node){
     gameData.selectedNode = node;
     let statusText = "";
     if(node.isBase){
         cachedEnemyPower = 0;
-        statusText = "【我方基地】";
+        statusText = "【我方指挥基地】";
     }else if(gameData.capturedNodes[node.id] && Date.now() < gameData.capturedNodes[node.id]){
         statusText = "【已占领，持续产出资源】";
         cachedEnemyPower = 0;
     }else{
-        //核心改动：存在记录就复用，不存在才生成新战力
+        // 存在记录就复用，不存在才生成新战力
         if(gameData.nodeEnemyPower[node.id] === undefined){
             gameData.nodeEnemyPower[node.id] = getRandomEnemyPower(calcTotalPower());
         }
         cachedEnemyPower = gameData.nodeEnemyPower[node.id];
         statusText = `【存在敌方舰队，战力${cachedEnemyPower}】`;
     }
-    addLog(`选中星域：${node.name} ${statusText}`);
+    addLog(`选中建筑：${node.name} ${statusText}`);
     refreshSendBtn();
     renderStarMap();
     updateUI();
@@ -988,10 +1097,10 @@ function updateUI(){
             tipText = `<span class="power-safe">我方优势，胜率较高 (战力比值:${ratio.toFixed(2)})</span>`;
         }else if(ratio >= 0.85){
             enemyPowerDom.className = "power-warning";
-            tipText = `<span class="power-warning">双方势均力敌，风险较大 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-warning">少量损失 (战力比值:${ratio.toFixed(2)})</span>`;
         }else{
             enemyPowerDom.className = "power-danger";
-            tipText = `<span class="power-danger">敌方战力更强，不建议进攻 (战力比值:${ratio.toFixed(2)})</span>`;
+            tipText = `<span class="power-danger">毫无胜算 (战力比值:${ratio.toFixed(2)})</span>`;
         }
         compareTipDom.innerHTML = tipText;
     }else{
@@ -1127,7 +1236,7 @@ document.getElementById("sendFleet").onclick = ()=>{
     addLog(`舰队出发前往【${target.name}】`);
 
     //航行光点动画
-    const baseNode = starNodes.find(x=>x.isBase);
+    const baseNode = buildingList.find(x=>x.isBase);
     createFleetAnim(baseNode.x,baseNode.y,target.x,target.y,6000,()=>{
         //航行结束战斗
         const ourPower = calcTotalPower();
@@ -1206,6 +1315,65 @@ function collectResource(multiplier = 1){
 document.getElementById("saveBtn").onclick = saveGame;
 document.getElementById("loadBtn").onclick = loadGame;
 document.getElementById("clearBtn").onclick = clearSave;
+//====================资源交易系统====================
+//交易比例 10金属换3晶体
+const TRADE_METAL_PER = 10;
+const TRADE_CRY_PER = 3;
+
+/**
+ * metalToCrystal：金属兑换晶体
+ * @param tradeMetalAmount 消耗多少金属
+ */
+function metalToCrystal(tradeMetalAmount){
+    if(tradeMetalAmount <= 0) return false;
+    if(gameData.metal < tradeMetalAmount){
+        addLog("<span class='red'>❌金属不足，兑换失败</span>");
+        return false;
+    }
+    //能兑换多少晶体
+    const getCrystal = Math.floor(tradeMetalAmount / TRADE_METAL_PER * TRADE_CRY_PER);
+    gameData.metal -= tradeMetalAmount;
+    gameData.crystal += getCrystal;
+    addLog(`<span class="green">💱交易完成：消耗金属${tradeMetalAmount}，获得晶体${getCrystal}</span>`);
+    createPopup(`💱金属→晶体：-${tradeMetalAmount}金属 +${getCrystal}晶体`);
+    updateUI();
+    saveGame();
+    return true;
+}
+
+/**
+ * crystalToMetal 晶体兑换金属
+ * @param tradeCrystalAmount 消耗多少晶体
+ */
+function crystalToMetal(tradeCrystalAmount){
+    if(tradeCrystalAmount <= 0) return false;
+    if(gameData.crystal < tradeCrystalAmount){
+        addLog("<span class='red'>❌晶体不足，兑换失败</span>");
+        return false;
+    }
+    const getMetal = Math.floor(tradeCrystalAmount / TRADE_CRY_PER * TRADE_METAL_PER);
+    gameData.crystal -= tradeCrystalAmount;
+    gameData.metal += getMetal;
+    addLog(`<span class="green">💱交易完成：消耗晶体${tradeCrystalAmount}，获得金属${getMetal}</span>`);
+    createPopup(`💱晶体→金属：-${tradeCrystalAmount}晶体 +${getMetal}金属`);
+    updateUI();
+    saveGame();
+    return true;
+}
+
+//绑定按钮事件
+document.getElementById("tradeMetalToCrystal1000").onclick = ()=>metalToCrystal(1000);
+document.getElementById("tradeMetalToCrystal5000").onclick = ()=>metalToCrystal(5000);
+document.getElementById("tradeMetalToCrystalMax").onclick = ()=>{
+    metalToCrystal(Math.floor(gameData.metal));
+};
+
+document.getElementById("tradeCrystalToMetal1000").onclick = ()=>crystalToMetal(1000);
+document.getElementById("tradeCrystalToMetal5000").onclick = ()=>crystalToMetal(5000);
+document.getElementById("tradeCrystalToMetalMax").onclick = ()=>{
+    crystalToMetal(Math.floor(gameData.crystal));
+};
+//====================交易系统结束====================
 
 initGame();
 renderStarMap();
